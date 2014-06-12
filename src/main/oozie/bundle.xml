@@ -1,0 +1,18 @@
+<bundle-app name='bundle-allmyexample' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xmlns='uri:oozie:bundle:0.1'>
+    <controls>
+        <kick-off-time>${kickOffTime}</kick-off-time>
+    </controls>
+    <coordinator name='coord-1'>
+        <app-path>${coor_app_path}</app-path>
+        <configuration>
+            <property>
+                <name>start</name>
+                <value>${start}</value>
+            </property>
+            <property>
+                <name>end</name>
+                <value>${end}</value>
+            </property>
+        </configuration>
+    </coordinator>
+</bundle-app>

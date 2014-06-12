@@ -1,0 +1,25 @@
+@startuml
+title reporting UI use case
+'define use case
+usecase "track a new IO" as case1
+(create new Report) as (case2)
+usecase "remove a report" as case3
+usecase "publish exposure report" as case4
+usecase "view detail of a report" as case5
+
+'define actors
+:Adops/Dev: as UIuser
+actor owner << report owner >>
+
+left to right direction
+UIuser -up-> (case1) : UI action
+case2 <-down- UIuser : UI action
+case4 <-left- UIuser: UI action
+case5 <- UIuser: UI action
+
+top to bottom direction
+UIuser <|-- owner
+owner -> case3 : UI action
+note left of owner : only owner are allowed \n to delete a report
+
+@enduml

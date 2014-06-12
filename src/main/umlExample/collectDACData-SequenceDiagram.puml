@@ -1,0 +1,100 @@
+@startuml
+'->,--[#red]>,<<-,...... can be [colored] arrow
+'you can use actor,boundary,control, entity, database to define a participant
+'#red can change the color of a actor or a participant
+'can "participant '***' as L to rename it"
+'Alice->Alice: This is a signal to self.\nIt also demonstrates\nmultiline
+'"autonumber $num ["<b>(<u>##</u>)"]" is used to automatically add number to messages
+'title is the keyword to define title
+'newpage is the keyword
+'note left/right/over of $participant [#red]: descrption      end note
+'using == separator to divide to logic steps
+'use ... to delay
+'activate and deactivate/destroy are used to denote participant activation
+'(C,#ADD1B2) add a spotted character in a colored circle using the syntax (X,color)
+'box "Internal Service" #LightBlue
+' 	participant Bob
+' 	participant Alice
+' end box         draw a box arround some participants, using box and end box commands.
+'can use skinparam to define the skin
+'skinparam backgroundColor #EEEBDC
+'skinparam sequence {
+'	ArrowColor DeepSkyBlue
+'	ActorBorderColor DeepSkyBlue
+'	LifeLineBorderColor blue
+'	LifeLineBackgroundColor #A9DCDF
+'
+'	ParticipantBorderColor DeepSkyBlue
+'	ParticipantBackgroundColor DodgerBlue
+'	ParticipantFontName Impact
+'	ParticipantFontSize 17
+'	ParticipantFontColor #A9DCDF
+'
+'	ActorBackgroundColor aqua
+'	ActorFontColor DeepSkyBlue
+'	ActorFontSize 17
+'	ActorFontName Aapex
+'}
+skin BlueModern
+title Sequence diagram of collect DAC data Cronjob
+autonumber 1 "step <b>0"
+actor developer #purple
+box "report local env" #LightBlue
+participant developer
+participant CollectDACDataCron <<(C,#ADD1B2)>>
+participant NetworkDataCollectorJob <<(C,#ADD1B2)>>
+'participant CampaignDataCollectorJob <<(C,#ADD1B2)>>
+end box
+
+participant "collect user network\ndata grid job" as TBD1
+'participant "collect user campaign\ndata grid job" as TBD2
+box "report grid env" #LightRed
+participant TBD1
+'participant TBD2
+end box
+
+developer -[#blue]> CollectDACDataCron : run the crontab job
+activate CollectDACDataCron
+CollectDACDataCron -[#blue]> CollectDACDataCron : tryRun
+alt no other job running
+CollectDACDataCron -[#blue]> NetworkDataCollectorJob : run
+activate NetworkDataCollectorJob
+NetworkDataCollectorJob -[#blue]> NetworkDataCollectorJob : override latest app \n to hdfs
+loop n times
+NetworkDataCollectorJob -[#blue]>> TBD1 : runOOZIE jobs
+end
+activate TBD1
+note over of TBD1
+each job get one
+day network data
+end note
+...
+NetworkDataCollectorJob <[#blue]-- TBD1 : return
+CollectDACDataCron <[#blue]-- NetworkDataCollectorJob : return
+destroy TBD1
+deactivate NetworkDataCollectorJob
+CollectDACDataCron --[#blue]> developer : done
+else existing job running
+CollectDACDataCron --[#blue]> developer : quit
+end
+
+'==  ==
+'CollectDACDataCron -[#blue]> CampaignDataCollectorJob : run
+'activate CampaignDataCollectorJob
+'CampaignDataCollectorJob -[#blue]> CampaignDataCollectorJob : override latest app \n to hdfs
+'loop n times
+'CampaignDataCollectorJob -[#blue]> TBD2 : runOOZIE jobs
+'end
+'activate TBD2
+'note over of TBD2
+'each job get only one day user
+'    data on different lines
+'end note
+'...
+'CampaignDataCollectorJob <[#blue]- TBD2 : return
+'CollectDACDataCron <[#blue]- CampaignDataCollectorJob : return
+'destroy TBD2
+'deactivate CampaignDataCollectorJob
+
+
+@enduml

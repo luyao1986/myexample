@@ -1,0 +1,306 @@
+<workflow-app xmlns='uri:oozie:workflow:0.4' name='allmyexample_wf'>
+    <global>
+        <!--jobtracker, namenode, jobxml, configuration can be override in later detailed action-->
+        <job-tracker>${jobTracker}</job-tracker>
+        <name-node>${nameNode}</name-node>
+        <job-xml>action-default.xml</job-xml>
+        <configuration>
+            <property>
+                <name>mapred.job.queue.name</name>
+                <value>${queueName}</value>
+            </property>
+            <property>
+                <name>mapreduce.job.acl-view-job</name>
+                <value>*</value>
+            </property>
+            <property>
+                <name>mapreduce.job.acl-modify-job</name>
+                <value>*</value>
+            </property>
+            <property>
+                <name>oozie.launcher.mapreduce.job.acl-modify-job</name>
+                <value>*</value>
+            </property>
+            <property>
+                <name>oozie.launcher.mapreduce.job.acl-view-job</name>
+                <value>*</value>
+            </property>
+            <property>
+                <name>mapred.compress.map.output</name>
+                <value>true</value>
+            </property>
+            <!--below will used when cross colo-->
+            <property>
+                <name>oozie.launcher.mapreduce.job.hdfs-servers</name>
+                <value>hdfs://mithrilred-nn1.red.ygrid.yahoo.com:8020</value>
+            </property>
+        </configuration>
+    </global>
+    <!--The email action requires some SMTP server configuration to be present (in oozie-site.xml) like oozie.email.smtp.host...-->
+    <start to='sendemail' />
+    <action name="sendemail">
+        <email xmlns="uri:oozie:email-action:0.1">
+            <to>shiyao@yahoo-inc.com,qian_198697@163.com</to>
+            <cc>adonis.melody@gmail.com</cc>
+            <subject>Email notifications for ${wf:id()}</subject>
+            <body>The wf ${wf:id()} started.</body>
+        </email>
+        <ok to="distcp-node"/>
+        <error to="fail"/>
+    </action>
+    <action name="distcp-node">
+        <distcp xmlns="uri:oozie:distcp-action:0.1">
+            <prepare>
+                <delete path="${output_distcp}"/>
+            </prepare>
+            <arg>${input}</arg>
+            <arg>${output_distcp}</arg>
+        </distcp>
+        <ok to="pig-node"/>
+        <error to="fail"/>
+    </action>
+    <action name="pig-node">
+        <!--During runtime, the Oozie server picks up contents under lib/* and deploys them on the actual compute node
+         using Hadoop distributed cache, so we had better put all UDF/param_file under lib/ to avoid use <archive> <file>-->
+        <pig>
+            <prepare>
+                <delete path="${output_pig}"/>
+            </prepare>
+            <script>id.pig</script>
+            <param>INPUT=${output_distcp}</param>
+            <param>OUTPUT=${output_pig}</param>
+        </pig>
+        <ok to="mr-node"/>
+        <error to="fail"/>
+    </action>
+    <action name="mr-node">
+        <map-reduce>
+            <prepare>
+                <delete path="${output_mr}"/>
+            </prepare>
+            <configuration>
+                <property>
+                    <name>mapreduce.map.class</name>
+                    <value>hadoopMR.WordCount$TokenizerMapper</value>
+                </property>
+                <property>
+                    <!--name>mapred.reducer.class is the MR API 1</name-->
+                    <name>mapreduce.reduce.class</name>
+                    <value>hadoopMR.WordCount$IntSumReducer</value>
+                </property>
+                <property>
+                    <name>mapred.reducer.new-api</name>
+                    <value>true</value>
+                </property>
+                <property>
+                    <name>mapred.mapper.new-api</name>
+                    <value>true</value>
+                </property>
+                <property>
+                    <name>mapred.output.key.class</name>
+                    <value>org.apache.hadoop.io.Text</value>
+                </property>
+                <property>
+                    <name>mapred.output.value.class</name>
+                    <value>org.apache.hadoop.io.IntWritable</value>
+                </property>
+                <property>
+                    <name>mapred.map.tasks</name>
+                    <value>1</value>
+                </property>
+                <property>
+                    <name>mapred.input.dir</name>
+                    <value>${output_pig}</value>
+                </property>
+                <property>
+                    <name>mapred.output.dir</name>
+                    <value>${output_mr}</value>
+                </property>
+                <!--we can even add partitioner, inputformat -->
+            </configuration>
+        </map-reduce>
+        <ok to="ssh-node"/>
+        <error to="fail"/>
+    </action>
+    <action name="ssh-node">
+        <ssh xmlns="uri:oozie:ssh-action:0.1">
+            <host>localhost</host>
+            <command>echo</command>
+            <args>${hadoop:counters("mr-node")["COMMON"]["COMMON.ERROR_ACCESS_DH_FILES"]}</args>
+        </ssh>
+        <ok to="shell-node"/>
+        <error to="fail"/>
+    </action>
+    <action name="shell-node">
+        <shell xmlns="uri:oozie:shell-action:0.2">
+            <exec>echo</exec>
+            <argument>my_output=Hello Oozie</argument>
+            <capture-output/>
+        </shell>
+        <ok to="check-output"/>
+        <error to="fail"/>
+    </action>
+    <decision name="check-output">
+        <switch>
+            <case to="hdfs-node">
+                ${wf:actionData('shell-node')['my_output'] eq 'Hello Oozie'}
+            </case>
+            <default to="fail-output"/>
+        </switch>
+    </decision>
+    <action name="hdfs-node">
+        <fs>
+            <move source="${nameNode}/user/${wf:user()}/${examplesRoot}/output-data/demo/mr-node"
+                  target="${output_hdfs}"/>
+        </fs>
+        <ok to="java-node"/>
+        <error to="fail"/>
+    </action>
+    <action name="java-node">
+        <java>
+            <prepare>
+                <delete path="${output_java}"/>
+            </prepare>
+            <configuration>
+                <property>
+                    <name>oozie.launcher.mapred.job.map.memory.mb</name>
+                    <value>2048</value>
+                </property>
+                <property>
+                    <name>oozie.launcher.mapred.child.java.opts</name>
+                    <value>-server -Xmx1G</value>
+                    <description>increase the memory for the later Hadoop job if you trigger a PigServer/MR...</description>
+                </property>
+                <property>
+                    <name>oozie.launcher.mapred.job.reduce.memory.mb</name>
+                    <value>-Xmx1G</value>
+                </property>
+            </configuration>
+            <main-class>oozie.JavaCaptureOut</main-class>
+            <java-opts>-Xms512m</java-opts>
+            <java-opts>-Xmx1G</java-opts> <!--JVM parameters-->
+            <arg>${output_hdfs}</arg>
+            <capture-output/>
+        </java>
+        <ok to="streaming-node"/>
+        <error to="fail"/>
+    </action>
+    <action name="streaming-node">
+        <map-reduce>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <prepare>
+                <delete path="${nameNode}/user/${wf:user()}/${examplesRoot}/output-data/streaming"/>
+            </prepare>
+            <streaming>
+                <mapper>/bin/cat</mapper>
+                <reducer>/usr/bin/wc</reducer>
+            </streaming>
+            <configuration>
+                <property>
+                    <name>mapred.input.dir</name>
+                    <value>${wf:actionData('java-node')['path']}</value>
+                </property>
+                <property>
+                    <name>mapred.output.dir</name>
+                    <value>/user/${wf:user()}/${examplesRoot}/output-data/streaming</value>
+                </property>
+            </configuration>
+        </map-reduce>
+        <ok to="subworkflow-node"/>
+        <error to="fail"/>
+    </action>
+    <action name="subworkflow-node">
+        <sub-workflow>
+            <app-path>${nameNode}/user/${wf:user()}/${examplesRoot}/apps/map-reduce</app-path>
+            <configuration>
+                <property>
+                    <name>jobTracker</name>
+                    <value>${jobTracker}</value>
+                </property>
+                <property>
+                    <name>nameNode</name>
+                    <value>${nameNode}</value>
+                </property>
+                <property>
+                    <name>queueName</name>
+                    <value>${queueName}</value>
+                </property>
+                <property>
+                    <name>examplesRoot</name>
+                    <value>${examplesRoot}</value>
+                </property>
+                <property>
+                    <name>outputDir</name>
+                    <value>subwf</value>
+                </property>
+            </configuration>
+        </sub-workflow>
+        <ok to="end"/>
+        <error to="fail"/>
+    </action>
+    <!--action name="sqoop-freeform-node">
+        <sqoop xmlns="uri:oozie:sqoop-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <prepare>
+                <delete path="${nameNode}/user/${wf:user()}/${examplesRoot}/output-data/sqoop-freeform"/>
+                <mkdir path="${nameNode}/user/${wf:user()}/${examplesRoot}/output-data"/>
+            </prepare>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <arg>import</arg>
+            <arg>--connect</arg>
+            <arg>jdbc:hsqldb:file:db.hsqldb</arg>
+            <arg>--username</arg>
+            <arg>sa</arg>
+            <arg>--password</arg>
+            <arg></arg>
+            <arg>--verbose</arg>
+            <arg>--query</arg>
+            <arg>select TT.I, TT.S from TT where $CONDITIONS</arg>
+            <arg>--target-dir</arg>
+            <arg>/user/${wf:user()}/${examplesRoot}/output-data/sqoop-freeform</arg>
+            <arg>-m</arg>
+            <arg>1</arg>
+            <file>db.hsqldb.properties#db.hsqldb.properties</file>
+            <file>db.hsqldb.script#db.hsqldb.script</file>
+        </sqoop>
+        <ok to="end"/>
+        <error to="fail"/>
+    </action-->
+    <!--action name="hive-node">
+        <hive xmlns="uri:oozie:hive-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <prepare>
+                <delete path="${nameNode}/user/${wf:user()}/${examplesRoot}/output-data/hive"/>
+                <mkdir path="${nameNode}/user/${wf:user()}/${examplesRoot}/output-data"/>
+            </prepare>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <script>script.q</script>
+            <param>INPUT=/user/${wf:user()}/${examplesRoot}/input-data/table</param>
+            <param>OUTPUT=/user/${wf:user()}/${examplesRoot}/output-data/hive</param>
+        </hive>
+        <ok to="end"/>
+        <error to="fail"/>
+    </action-->
+    <!--HCatalog example-->
+    <kill name="fail">
+        <message>Java failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+    <kill name="fail-output">
+        <message>Incorrect output, expected [Hello Oozie] but was [${wf:actionData('shell-node')['my_output']}]</message>
+    </kill>
+    <end name='end' />
+</workflow-app>
+

@@ -1,0 +1,31 @@
+<configuration>
+    <property>
+        <name>mapreduce.map.speculative</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>mapreduce.reduce.speculative</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>mapreduce.output.fileoutputformat.compress</name>
+        <value>false</value>
+    </property>
+    <property>
+        <name>mapreduce.output.fileoutputformat.compress.codec</name>
+        <value>org.apache.hadoop.io.compress.BZip2Codec</value>
+        <!--         <value>org.apache.hadoop.io.compress.GzipCodec</value> -->
+    </property>
+    <property>
+        <name>fs.permissions.umask-mode</name>
+        <value>007</value>
+    </property>
+    <property>
+        <name>pig.tmpfilecompression</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>pig.tmpfilecompression.codec</name>
+        <value>lzo</value>
+    </property>
+</configuration>
